@@ -1,41 +1,101 @@
 import { toNumber } from "./format";
 
-function mapUsageFromDraft(draft) {
-  const usage = new Map();
+export function getCompatibleUsageUnits(unit) {
+  if (!unit) {
+    return [];
+  }
+
+  return [unit];
+}
+
+export function convertQuantityBetweenUnits(quantity, fromUnit, toUnit) {
+  if (fromUnit === toUnit) {
+    return quantity;
+  }
+
+  return null;
+}
+
+function normalizeUsageEntries(draft, ingredientMap) {
+  const groupedUsage = new Map();
+  const usageDetails = new Map();
+  const errors = new Set();
 
   (draft?.items || []).forEach((item) => {
-    if (!item?.ingredientId) return;
+    if (!item?.ingredientId) {
+      return;
+    }
 
-    const usedQuantity = toNumber(item.usedQuantity);
-    if (usedQuantity <= 0) return;
+    const ingredient = ingredientMap.get(item.ingredientId);
+    if (!ingredient) {
+      errors.add("Uno de los ingredientes seleccionados no existe en inventario.");
+      return;
+    }
 
-    const previous = usage.get(item.ingredientId) || 0;
-    usage.set(item.ingredientId, previous + usedQuantity);
+    const rawQuantity = toNumber(item.usedQuantity);
+    if (rawQuantity <= 0) {
+      return;
+    }
+
+    const usageUnit = item.usageUnit || ingredient.unit;
+    const compatibleUnits = getCompatibleUsageUnits(ingredient.unit);
+
+    if (!compatibleUnits.includes(usageUnit)) {
+      errors.add(
+        `La unidad ${usageUnit} no es compatible con ${ingredient.name} (${ingredient.unit}).`
+      );
+      return;
+    }
+
+    const normalizedQuantity = convertQuantityBetweenUnits(
+      rawQuantity,
+      usageUnit,
+      ingredient.unit
+    );
+
+    if (normalizedQuantity === null) {
+      errors.add(
+        `No se pudo convertir ${usageUnit} a ${ingredient.unit} para ${ingredient.name}.`
+      );
+      return;
+    }
+
+    const previous = groupedUsage.get(item.ingredientId) || 0;
+    groupedUsage.set(item.ingredientId, previous + normalizedQuantity);
+
+    const currentDetails = usageDetails.get(item.ingredientId) || [];
+    currentDetails.push(`${rawQuantity} ${usageUnit}`);
+    usageDetails.set(item.ingredientId, currentDetails);
   });
 
-  return usage;
+  return {
+    groupedUsage,
+    usageDetails,
+    errors: [...errors]
+  };
 }
 
 export function getBatchPreview(draft, ingredients) {
   const ingredientMap = new Map(
     ingredients.map((ingredient) => [ingredient.id, ingredient])
   );
-  const usage = mapUsageFromDraft(draft);
-  const errors = [];
+  const normalizedUsage = normalizeUsageEntries(draft, ingredientMap);
+  const errors = [...normalizedUsage.errors];
   const items = [];
   let totalCost = 0;
+  let cookieCostTotal = 0;
 
-  usage.forEach((usedQuantity, ingredientId) => {
+  normalizedUsage.groupedUsage.forEach((usedQuantity, ingredientId) => {
     const ingredient = ingredientMap.get(ingredientId);
 
     if (!ingredient) {
-      errors.push("Uno de los ingredientes seleccionados no existe en inventario.");
       return;
     }
 
     const availableQuantity = toNumber(ingredient.quantityAvailable);
     const unitPrice = toNumber(ingredient.pricePerUnit);
     const partialCost = usedQuantity * unitPrice;
+    const affectsCookieCost = Boolean(ingredient.affectsCookieCost);
 
     if (usedQuantity > availableQuantity) {
       errors.push(
@@ -44,13 +104,18 @@ export function getBatchPreview(draft, ingredients) {
     }
 
     totalCost += partialCost;
+    if (affectsCookieCost) {
+      cookieCostTotal += partialCost;
+    }
 
     items.push({
       ingredientId,
       name: ingredient.name,
       unit: ingredient.unit,
       usedQuantity,
+      inputSummary: (normalizedUsage.usageDetails.get(ingredientId) || []).join(" + "),
       unitPrice,
+      affectsCookieCost,
       availableQuantity,
       partialCost
     });
@@ -67,11 +132,14 @@ export function getBatchPreview(draft, ingredients) {
   }
 
   const unitCost = producedDesserts > 0 ? totalCost / producedDesserts : 0;
+  const cookieUnitCost = producedDesserts > 0 ? cookieCostTotal / producedDesserts : 0;
 
   return {
     items,
     producedDesserts,
     totalCost,
+    cookieCostTotal,
+    cookieUnitCost,
     unitCost,
     errors
   };
@@ -84,16 +152,16 @@ export function applyBatchRegistration(draft, ingredients) {
     throw new Error(preview.errors[0]);
   }
 
-  const usage = mapUsageFromDraft(draft);
-
   const updatedIngredients = ingredients.map((ingredient) => {
-    const used = usage.get(ingredient.id);
+    const usedEntry = preview.items.find((item) => item.ingredientId === ingredient.id);
 
-    if (!used) return ingredient;
+    if (!usedEntry) return ingredient;
+
+    const nextQuantity = toNumber(ingredient.quantityAvailable) - usedEntry.usedQuantity;
 
     return {
       ...ingredient,
-      quantityAvailable: toNumber(ingredient.quantityAvailable) - used
+      quantityAvailable: Number(Math.max(nextQuantity, 0).toFixed(4))
     };
   });
 

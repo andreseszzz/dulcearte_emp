@@ -80,7 +80,6 @@ export default function UsersPage({ users, onCreateUser, onDeleteUser }) {
                   <th>Nombre</th>
                   <th>Contacto</th>
                   <th>Postre preferido</th>
-                  <th>Quiere galleta</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -90,7 +89,6 @@ export default function UsersPage({ users, onCreateUser, onDeleteUser }) {
                     <td>{user.name}</td>
                     <td>{user.contact}</td>
                     <td>{user.preferredFlavor}</td>
-                    <td>{user.wantsCookie ? "Si" : "No"}</td>
                     <td>
                       <button
                         type="button"
@@ -138,9 +136,6 @@ export default function UsersPage({ users, onCreateUser, onDeleteUser }) {
             </li>
             <li>
               <strong>Postre preferido:</strong> {draft.preferredFlavor || "Sin preferencia"}
-            </li>
-            <li>
-              <strong>Quiere galleta:</strong> {draft.wantsCookie ? "Si" : "No"}
             </li>
           </ul>
         )}

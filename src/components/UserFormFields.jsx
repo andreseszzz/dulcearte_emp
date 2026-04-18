@@ -41,16 +41,6 @@ export default function UserFormFields({ values, onChange, idPrefix = "user" }) 
           ))}
         </select>
       </label>
-
-      <label className="checkbox-field" htmlFor={`${idPrefix}-cookie`}>
-        <input
-          id={`${idPrefix}-cookie`}
-          type="checkbox"
-          checked={values.wantsCookie}
-          onChange={(event) => onChange("wantsCookie", event.target.checked)}
-        />
-        Quiere capa de galleta
-      </label>
     </div>
   );
 }

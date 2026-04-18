@@ -8,7 +8,7 @@ import { formatCurrency, formatPlainNumber } from "../utils/format";
 function getFreshBatchDraft() {
   return {
     ...EMPTY_BATCH_DRAFT,
-    items: [{ ingredientId: "", usedQuantity: "" }]
+    items: [{ ingredientId: "", usedQuantity: "", usageUnit: "" }]
   };
 }
 
@@ -91,7 +91,10 @@ export default function NewBatchPage({ ingredients, onRegisterBatch, latestBatch
             <strong>Costo total:</strong> {formatCurrency(latestBatch.totalCost)}
           </p>
           <p>
-            <strong>Costo unitario:</strong> {formatCurrency(latestBatch.unitCost)}
+            <strong>Costo unitario postre main:</strong> {formatCurrency(latestBatch.unitCost)}
+          </p>
+          <p>
+            <strong>Costo unitario galleta:</strong> {formatCurrency(latestBatch.cookieUnitCost)}
           </p>
         </article>
       ) : null}
@@ -127,7 +130,9 @@ export default function NewBatchPage({ ingredients, onRegisterBatch, latestBatch
                   <thead>
                     <tr>
                       <th>Ingrediente</th>
-                      <th>Cantidad usada</th>
+                      <th>Cantidad ingresada</th>
+                      <th>Cantidad aplicada</th>
+                      <th>Precio unidad aplicada</th>
                       <th>Costo parcial</th>
                     </tr>
                   </thead>
@@ -135,9 +140,11 @@ export default function NewBatchPage({ ingredients, onRegisterBatch, latestBatch
                     {preview.items.map((item) => (
                       <tr key={item.ingredientId}>
                         <td>{item.name}</td>
+                        <td>{item.inputSummary || `${formatPlainNumber(item.usedQuantity)} ${item.unit}`}</td>
                         <td>
                           {formatPlainNumber(item.usedQuantity)} {item.unit}
                         </td>
+                        <td>{formatPlainNumber(item.unitPrice, 4)} COP</td>
                         <td>{formatCurrency(item.partialCost)}</td>
                       </tr>
                     ))}
@@ -153,7 +160,13 @@ export default function NewBatchPage({ ingredients, onRegisterBatch, latestBatch
                   <strong>Postres producidos:</strong> {formatPlainNumber(preview.producedDesserts, 0)}
                 </li>
                 <li>
-                  <strong>Costo unitario:</strong> {formatCurrency(preview.unitCost)}
+                  <strong>Costo unitario postre main:</strong> {formatCurrency(preview.unitCost)}
+                </li>
+                <li>
+                  <strong>Costo total galleta:</strong> {formatCurrency(preview.cookieCostTotal)}
+                </li>
+                <li>
+                  <strong>Costo unitario galleta:</strong> {formatCurrency(preview.cookieUnitCost)}
                 </li>
               </ul>
             </div>

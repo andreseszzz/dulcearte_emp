@@ -2,14 +2,28 @@ import { useMemo, useState } from "react";
 import ConfirmModal from "../components/ConfirmModal";
 import IngredientFormFields from "../components/IngredientFormFields";
 import { EMPTY_INGREDIENT_FORM } from "../data/defaultData";
-import { formatCurrency, formatPlainNumber } from "../utils/format";
+import { formatCurrency, formatPlainNumber, toNumber } from "../utils/format";
+import {
+  convertInputPriceToUnitPrice,
+  convertUnitPriceToInputPrice,
+  getPriceBasisLabel,
+  normalizePriceBasis
+} from "../utils/ingredientPricing";
 
 function getIngredientForm(ingredient) {
+  const unit = ingredient.unit;
+  const priceBasis = normalizePriceBasis(unit, ingredient.priceBasis);
+  const quantity = toNumber(ingredient.quantityAvailable);
+
   return {
     name: ingredient.name,
     quantityAvailable: String(ingredient.quantityAvailable),
-    unit: ingredient.unit,
-    pricePerUnit: String(ingredient.pricePerUnit)
+    unit,
+    priceBasis,
+    pricePerUnit: String(
+      convertUnitPriceToInputPrice(ingredient.pricePerUnit, unit, priceBasis, quantity)
+    ),
+    affectsCookieCost: Boolean(ingredient.affectsCookieCost)
   };
 }
 
@@ -30,6 +44,7 @@ export default function InventoryPage({
   const [ingredientToDelete, setIngredientToDelete] = useState(null);
   const [ingredientToAdjust, setIngredientToAdjust] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const sortedIngredients = useMemo(
     () => [...ingredients].sort((a, b) => a.name.localeCompare(b.name)),
@@ -37,6 +52,7 @@ export default function InventoryPage({
   );
 
   const updateFormField = (field, value) => {
+    setSuccessMessage("");
     setIngredientForm((previous) => ({
       ...previous,
       [field]: value
@@ -60,7 +76,10 @@ export default function InventoryPage({
             <button
               type="button"
               className="btn secondary"
-              onClick={resetForm}
+              onClick={() => {
+                setSuccessMessage("");
+                resetForm();
+              }}
               aria-label="Cancelar edicion"
             >
               Cancelar edicion
@@ -73,6 +92,7 @@ export default function InventoryPage({
           onSubmit={(event) => {
             event.preventDefault();
             setErrorMessage("");
+            setSuccessMessage("");
             setShowSaveConfirm(true);
           }}
         >
@@ -82,13 +102,21 @@ export default function InventoryPage({
             <button type="submit" className="btn primary">
               {editingIngredientId ? "Actualizar" : "Guardar"}
             </button>
-            <button type="button" className="btn secondary" onClick={resetForm}>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setSuccessMessage("");
+                resetForm();
+              }}
+            >
               Limpiar formulario
             </button>
           </div>
         </form>
 
         {errorMessage ? <p className="message error">{errorMessage}</p> : null}
+        {successMessage ? <p className="message success">{successMessage}</p> : null}
       </article>
 
       <article className="card">
@@ -110,6 +138,7 @@ export default function InventoryPage({
                   <th>Cantidad disponible</th>
                   <th>Unidad</th>
                   <th>Precio por unidad</th>
+                  <th>Afecta costo galleta</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -119,7 +148,10 @@ export default function InventoryPage({
                     <td>{ingredient.name}</td>
                     <td>{formatPlainNumber(ingredient.quantityAvailable)}</td>
                     <td>{ingredient.unit}</td>
-                    <td>{formatCurrency(ingredient.pricePerUnit)}</td>
+                    <td>
+                      {formatPlainNumber(ingredient.pricePerUnit, 4)} COP/{ingredient.unit}
+                    </td>
+                    <td>{ingredient.affectsCookieCost ? "Si" : "No"}</td>
                     <td>
                       <div className="table-actions">
                         <button
@@ -129,6 +161,7 @@ export default function InventoryPage({
                             setEditingIngredientId(ingredient.id);
                             setIngredientForm(getIngredientForm(ingredient));
                             setErrorMessage("");
+                            setSuccessMessage("");
                           }}
                         >
                           Editar
@@ -139,6 +172,7 @@ export default function InventoryPage({
                           onClick={() => {
                             setIngredientToAdjust(ingredient);
                             setErrorMessage("");
+                            setSuccessMessage("");
                           }}
                         >
                           Ajustar stock
@@ -149,6 +183,7 @@ export default function InventoryPage({
                           onClick={() => {
                             setIngredientToDelete(ingredient);
                             setErrorMessage("");
+                            setSuccessMessage("");
                           }}
                         >
                           Eliminar
@@ -180,30 +215,53 @@ export default function InventoryPage({
             idPrefix="confirm-ingredient"
           />
         )}
-        renderSummary={(draft) => (
-          <ul className="summary-list">
-            <li>
-              <strong>Nombre:</strong> {draft.name || "Sin nombre"}
-            </li>
-            <li>
-              <strong>Cantidad:</strong> {draft.quantityAvailable || "0"} {draft.unit || "g"}
-            </li>
-            <li>
-              <strong>Precio por unidad:</strong> {formatCurrency(draft.pricePerUnit)}
-            </li>
-          </ul>
-        )}
+        renderSummary={(draft) => {
+          const basis = normalizePriceBasis(draft.unit, draft.priceBasis);
+          const quantity = toNumber(draft.quantityAvailable);
+          const normalizedPrice = convertInputPriceToUnitPrice(
+            draft.pricePerUnit,
+            draft.unit,
+            basis,
+            quantity
+          );
+
+          return (
+            <ul className="summary-list">
+              <li>
+                <strong>Nombre:</strong> {draft.name || "Sin nombre"}
+              </li>
+              <li>
+                <strong>Cantidad:</strong> {draft.quantityAvailable || "0"} {draft.unit || "g"}
+              </li>
+              <li>
+                <strong>Precio ingresado:</strong> {formatCurrency(draft.pricePerUnit)}
+                {" "}
+                ({getPriceBasisLabel(draft.unit, basis)})
+              </li>
+              <li>
+                <strong>Precio aplicado por {draft.unit || "unidad"}:</strong>
+                {" "}
+                {formatCurrency(normalizedPrice)}
+              </li>
+              <li>
+                <strong>Afecta costo de galleta:</strong> {draft.affectsCookieCost ? "Si" : "No"}
+              </li>
+            </ul>
+          );
+        }}
         disableConfirm={(draft) =>
           !draft.name?.trim() ||
           Number.isNaN(Number(draft.quantityAvailable)) ||
           Number(draft.quantityAvailable) < 0 ||
           Number.isNaN(Number(draft.pricePerUnit)) ||
-          Number(draft.pricePerUnit) < 0
+          Number(draft.pricePerUnit) < 0 ||
+          (draft.unit === "g" && Number(draft.pricePerUnit) > 0 && Number(draft.quantityAvailable) <= 0)
         }
         confirmLabel={editingIngredientId ? "Confirmar actualizacion" : "Confirmar guardado"}
         onCancel={() => setShowSaveConfirm(false)}
         onConfirm={(draft) => {
           try {
+            const actionLabel = editingIngredientId ? "actualizado" : "guardado";
             if (editingIngredientId) {
               onUpdateIngredient(editingIngredientId, draft);
             } else {
@@ -211,8 +269,12 @@ export default function InventoryPage({
             }
 
             setShowSaveConfirm(false);
+            setErrorMessage("");
+            setSuccessMessage(`Ingrediente ${actionLabel} correctamente.`);
             resetForm();
           } catch (error) {
+            setShowSaveConfirm(false);
+            setSuccessMessage("");
             setErrorMessage(error.message || "No se pudo guardar el ingrediente.");
           }
         }}
@@ -236,8 +298,11 @@ export default function InventoryPage({
             return;
           }
 
+          const deletedName = ingredientToDelete.name;
           onDeleteIngredient(ingredientToDelete.id);
           setIngredientToDelete(null);
+          setErrorMessage("");
+          setSuccessMessage(`Ingrediente ${deletedName} eliminado correctamente.`);
 
           if (editingIngredientId === ingredientToDelete.id) {
             resetForm();
@@ -294,9 +359,13 @@ export default function InventoryPage({
           }
 
           try {
+            const adjustedName = ingredientToAdjust.name;
             onAdjustIngredientStock(ingredientToAdjust.id, draft.quantityAvailable);
             setIngredientToAdjust(null);
+            setErrorMessage("");
+            setSuccessMessage(`Stock de ${adjustedName} actualizado correctamente.`);
           } catch (error) {
+            setSuccessMessage("");
             setErrorMessage(error.message || "No se pudo ajustar el stock.");
           }
         }}
